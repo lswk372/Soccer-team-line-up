@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Soccer Team Lineup Builder</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    html, body { height: 100%; }
+    body { margin: 0; }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-green-900 via-green-800 to-green-900 p-4">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useRef, useMemo } = React;
+
+    // Minimal inline lucide icons
+    const Icon = ({ path, className }) => (
+      <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        {path}
+      </svg>
+    );
+    const IUsers   = (p)=><Icon {...p} path={<>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </>} />;
+    const IPlus    = (p)=><Icon {...p} path={<>
+      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    </>} />;
+    const ITrash   = (p)=><Icon {...p} path={<>
+      <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4
+      a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><line x1="10" y1="11" x2="10" y2="17" />
+      <line x1="14" y1="11" x2="14" y2="17" />
+    </>} />;
+    const IDownload= (p)=><Icon {...p} path={<>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/>
+      <line x1="12" y1="15" x2="12" y2="3"/>
+    </>} />;
+    const IUpload  = (p)=><Icon {...p} path={<>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/>
+      <line x1="12" y1="3" x2="12" y2="15"/>
+    </>} />;
+    const IRefresh = (p)=><Icon {...p} path={<>
+      <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+    </>} />;
+    const IFile    = (p)=><Icon {...p} path={<>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8"/>
+    </>} />;
+    const IImage   = (p)=><Icon {...p} path={<>
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
+      <polyline points="21 15 16 10 5 21"/>
+    </>} />;
+    const IPdf     = (p)=><Icon {...p} path={<>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/>
+    </>} />;
+
+    const POSITION_CATEGORIES = {
+      GK: ['GK'],
+      Defence: ['LB','LWB','CB','RB','RWB'],
+      Midfielder: ['DM','CM','AM','LM','RM'],
+      Attacker: ['ST','LW','RW']
+    };
+
+    const POSITION_COLORS = {
+      GK: 'bg-yellow-500',
+      LB: 'bg-blue-500', LWB: 'bg-blue-500', CB: 'bg-blue-500', RB: 'bg-blue-500', RWB:'bg-blue-500',
+      DM: 'bg-green-500', CM: 'bg-green-500', AM: 'bg-green-500', LM: 'bg-green-500', RM:'bg-green-500',
+      ST: 'bg-red-500', LW: 'bg-red-500', RW: 'bg-red-500'
+    };
+
+    const DEFAULT_FORMATIONS = {
+      '4-4-2': [
+        { x: 50, y: 90, position: 'GK' },
+        { x: 20, y: 70, position: 'LB' }, { x: 40, y: 75, position: 'CB' }, { x: 60, y: 75, position: 'CB' }, { x: 80, y: 70, position: 'RB' },
+        { x: 20, y: 45, position: 'LM' }, { x: 40, y: 50, position: 'CM' }, { x: 60, y: 50, position: 'CM' }, { x: 80, y: 45, position: 'RM' },
+        { x: 35, y: 20, position: 'ST' }, { x: 65, y: 20, position: 'ST' }
+      ],
+      '4-3-3': [
+        { x: 50, y: 90, position: 'GK' },
+        { x: 20, y: 70, position: 'LB' }, { x: 40, y: 75, position: 'CB' }, { x: 60, y: 75, position: 'CB' }, { x: 80, y: 70, position: 'RB' },
+        { x: 30, y: 50, position: 'CM' }, { x: 50, y: 55, position: 'CM' }, { x: 70, y: 50, position: 'CM' },
+        { x: 20, y: 20, position: 'LW' }, { x: 50, y: 15, position: 'ST' }, { x: 80, y: 20, position: 'RW' }
+      ],
+      '4-2-3-1': [
+        { x: 50, y: 90, position: 'GK' },
+        { x: 20, y: 70, position: 'LB' }, { x: 40, y: 75, position: 'CB' }, { x: 60, y: 75, position: 'CB' }, { x: 80, y: 70, position: 'RB' },
+        { x: 38, y: 55, position: 'DM' }, { x: 62, y: 55, position: 'DM' },
+        { x: 20, y: 35, position: 'LM' }, { x: 50, y: 38, position: 'AM' }, { x: 80, y: 35, position: 'RM' },
+        { x: 50, y: 18, position: 'ST' }
+      ],
+      '3-4-3': [
+        { x: 50, y: 90, position: 'GK' },
+        { x: 30, y: 75, position: 'CB' }, { x: 50, y: 75, position: 'CB' }, { x: 70, y: 75, position: 'CB' },
+        { x: 20, y: 50, position: 'LM' }, { x: 40, y: 55, position: 'CM' }, { x: 60, y: 55, position: 'CM' }, { x: 80, y: 50, position: 'RM' },
+        { x: 25, y: 20, position: 'LW' }, { x: 50, y: 15, position: 'ST' }, { x: 75, y: 20, position: 'RW' }
+      ],
+      '3-5-2': [
+        { x: 50, y: 90, position: 'GK' },
+        { x: 30, y: 75, position: 'CB' }, { x: 50, y: 75, position: 'CB' }, { x: 70, y: 75, position: 'CB' },
+        { x: 15, y: 50, position: 'LWB' }, { x: 35, y: 55, position: 'CM' }, { x: 50, y: 55, position: 'CM' }, { x: 65, y: 55, position: 'CM' }, { x: 85, y: 50, position: 'RWB' },
+        { x: 40, y: 20, position: 'ST' }, { x: 60, y: 20, position: 'ST' }
+      ],
+      'Diamond 4-4-2': [
+        { x: 50, y: 90, position: 'GK' },
+        { x: 20, y: 70, position: 'LB' }, { x: 40, y: 75, position: 'CB' }, { x: 60, y: 75, position: 'CB' }, { x: 80, y: 70, position: 'RB' },
+        { x: 50, y: 60, position: 'DM' }, { x: 30, y: 45, position: 'CM' }, { x: 70, y: 45, position: 'CM' }, { x: 50, y: 35, position: 'AM' },
+        { x: 35, y: 18, position: 'ST' }, { x: 65, y: 18, position: 'ST' }
+      ],
+    };
+
+    const ALL_POSITIONS = Object.values(POSITION_CATEGORIES).flat();
+
+    function App(){
+      const [players, setPlayers] = useState([
+        { id: 1, name: 'Player 1', number: 1, positions: ['GK'], details: '' },
+        { id: 2, name: 'Player 2', number: 2, positions: ['CB'], details: '' },
+        { id: 3, name: 'Player 3', number: 3, positions: ['CB'], details: '' },
+        { id: 4, name: 'Player 4', number: 4, positions: ['LB','LWB'], details: '' },
+        { id: 5, name: 'Player 5', number: 5, positions: ['RB','RWB'], details: '' },
+        { id: 6, name: 'Player 6', number: 6, positions: ['CM','DM'], details: '' },
+        { id: 7, name: 'Player 7', number: 7, positions: ['CM','AM'], details: '' },
+        { id: 8, name: 'Player 8', number: 8, positions: ['LM','LW'], details: '' },
+        { id: 9, name: 'Player 9', number: 9, positions: ['RM','RW'], details: '' },
+        { id: 10, name: 'Player 10', number: 10, positions: ['ST'], details: '' },
+        { id: 11, name: 'Player 11', number: 11, positions: ['ST','AM'], details: '' },
+      ]);
+      const [selectedFormation, setSelectedFormation] = useState('4-4-2');
+      const [teamName, setTeamName] = useState('My Team');
+      const [newPlayerName, setNewPlayerName] = useState('');
+      const [editingLineupSlot, setEditingLineupSlot] = useState(null);
+      const [editingPlayerDetails, setEditingPlayerDetails] = useState(null);
+      const [draggedSlot, setDraggedSlot] = useState(null);
+
+      const lineupInitial = useMemo(() => DEFAULT_FORMATIONS['4-4-2'].map((pos, idx) => ({
+        slotIndex: idx, player: players[idx] || null, x: pos.x, y: pos.y, assignedPosition: pos.position, note: ''
+      })), []);
+      const [lineup, setLineup] = useState(lineupInitial);
+
+      const fileInputRef = useRef(null);
+      const lineupInputRef = useRef(null);
+      const fieldRef = useRef(null);
+
+      const assignedPlayerIds = new Set(lineup.filter(s => s.player).map(s => s.player.id));
+      const availablePlayers = players.filter(p => !assignedPlayerIds.has(p.id));
+
+      const handleLineupDragStart = (slot, e) => {
+        setDraggedSlot(slot);
+        e.stopPropagation();
+      };
+
+      const handleFieldDrop = (e) => {
+        e.preventDefault();
+        if (!draggedSlot) return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        const x = ((e.clientX - rect.left) / rect.width) * 100;
+        const y = ((e.clientY - rect.top) / rect.height) * 100;
+        setLineup(lineup.map(s => s === draggedSlot ? { ...s, x, y } : s));
+        setDraggedSlot(null);
+      };
+
+      const addPlayer = () => {
+        if (!newPlayerName.trim()) return;
+        const newId = Math.max(0, ...players.map(p => p.id)) + 1;
+        const newNumber = Math.max(0, ...players.map(p => p.number)) + 1;
+        setPlayers([...players, { id: newId, name: newPlayerName.trim(), number: newNumber, positions: ['CM'], details: '' }]);
+        setNewPlayerName('');
+      };
+
+      const deletePlayer = (id) => {
+        setPlayers(players.filter(p => p.id !== id));
+        setLineup(lineup.map(slot => slot.player?.id === id ? { ...slot, player: null } : slot));
+      };
+
+      const resetLineup = () => {
+        const base = DEFAULT_FORMATIONS['4-4-2'];
+        setLineup(base.map((pos, idx) => ({ slotIndex: idx, player: null, x: pos.x, y: pos.y, assignedPosition: pos.position, note: '' })));
+        setSelectedFormation('4-4-2');
+      };
+
+      const applyFormation = (formationName) => {
+        const formation = DEFAULT_FORMATIONS[formationName];
+        if (!formation) return;
+        const newLineup = formation.map((pos, idx) => {
+          const existingSlot = lineup[idx];
+          return {
+            slotIndex: idx,
+            player: existingSlot?.player || null,
+            x: pos.x, y: pos.y,
+            assignedPosition: pos.position,
+            note: existingSlot?.note || ''
+          };
+        });
+        setLineup(newLineup);
+        setSelectedFormation(formationName);
+      };
+
+      const assignPlayerToSlot = (slot, player) => {
+        setLineup(lineup.map(s => s === slot ? { ...s, player, assignedPosition: player.positions[0] } : s));
+      };
+
+      const removePlayerFromSlot = (slot) => {
+        setLineup(lineup.map(s => s === slot ? { ...s, player: null } : s));
+      };
+
+      const updateSlotPosition = (slot, position) => {
+        setLineup(lineup.map(s => s === slot ? { ...s, assignedPosition: position } : s));
+      };
+
+      const updateSlotNote = (slot, note) => {
+        setLineup(lineup.map(s => s === slot ? { ...s, note } : s));
+      };
+
+      const togglePosition = (playerId, position) => {
+        setPlayers(players.map(p => {
+          if (p.id !== playerId) return p;
+          const has = p.positions.includes(position);
+          const newPositions = has ? p.positions.filter(pos => pos !== position) : [...p.positions, position];
+          return { ...p, positions: newPositions.length ? newPositions : [position] };
+        }));
+      };
+
+      const updatePlayerInfo = (playerId, field, value) => {
+        setPlayers(players.map(p => p.id === playerId ? { ...p, [field]: value } : p));
+        setLineup(lineup.map(slot => slot.player?.id === playerId ? { ...slot, player: { ...slot.player, [field]: value } } : slot));
+        if (editingPlayerDetails?.id === playerId) {
+          setEditingPlayerDetails({ ...editingPlayerDetails, [field]: value });
+        }
+      };
+
+      const download = (filename, dataStr, type='application/json') => {
+        const blob = new Blob([dataStr], { type });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename; a.click();
+        URL.revokeObjectURL(url);
+      };
+
+      const downloadPlayerDatabase = () => {
+        const data = { teamName, players, exportDate: new Date().toISOString() };
+        download(`${teamName.replace(/\s+/g,'_')}_players.json`, JSON.stringify(data, null, 2));
+      };
+
+      const uploadPlayerDatabase = (e) => {
+        const file = e.target.files[0]; if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          try{
+            const data = JSON.parse(ev.target.result);
+            if (data.players) {
+              setPlayers(data.players);
+              if (data.teamName) setTeamName(data.teamName);
+              alert('Player database loaded!');
+            }
+          }catch(err){ alert('Invalid JSON.'); }
+        };
+        reader.readAsText(file);
+        e.target.value = '';
+      };
+
+      const downloadLineupJSON = () => {
+        const data = { teamName, formation: selectedFormation, lineup, exportDate: new Date().toISOString() };
+        download(`${teamName.replace(/\s+/g,'_')}_lineup.json`, JSON.stringify(data, null, 2));
+      };
+
+      const uploadLineup = (e) => {
+        const file = e.target.files[0]; if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          try{
+            const data = JSON.parse(ev.target.result);
+            if (data.lineup) {
+              setLineup(data.lineup);
+              if (data.formation) setSelectedFormation(data.formation);
+              if (data.teamName) setTeamName(data.teamName);
+              alert('Lineup loaded!');
+            }
+          }catch(err){ alert('Invalid JSON.'); }
+        };
+        reader.readAsText(file);
+        e.target.value = '';
+      };
+
+      const downloadLineupPNG = async () => {
+        const html2canvas = (await import('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/+esm')).default;
+        const field = fieldRef.current; if (!field) return;
+        const canvas = await html2canvas(field, { backgroundColor: '#15803d', scale: 2, useCORS: true });
+        canvas.toBlob((blob) => {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = `${teamName.replace(/\s+/g,'_')}_lineup.png`; a.click();
+          URL.revokeObjectURL(url);
+        });
+      };
+
+      const downloadLineupPDF = async () => {
+        const html2canvas = (await import('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/+esm')).default;
+        const { jsPDF } = await import('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/+esm');
+        const field = fieldRef.current; if (!field) return;
+        const canvas = await html2canvas(field, { backgroundColor: '#15803d', scale: 2, useCORS: true });
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const imgWidth = pageWidth - 20;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        pdf.setFontSize(20);
+        pdf.text(teamName, pageWidth/2, 15, { align: 'center' });
+        if (selectedFormation) { pdf.setFontSize(14); pdf.text(`Formation: ${selectedFormation}`, pageWidth/2, 25, { align: 'center' }); }
+        pdf.addImage(imgData, 'PNG', 10, 30, imgWidth, imgHeight);
+        let yPos = 30 + imgHeight + 15;
+        if (yPos + 50 > pageHeight) { pdf.addPage(); yPos = 20; }
+        pdf.setFontSize(16); pdf.text('Player Roster', 10, yPos); yPos += 8;
+        pdf.setFontSize(10);
+        const playersOnField = lineup.filter(s => s.player).map(s => ({
+          number: s.player.number, name: s.player.name, position: s.assignedPosition, note: s.note
+        })).sort((a,b)=>a.number-b.number);
+        playersOnField.forEach(p => {
+          if (yPos > pageHeight - 15){ pdf.addPage(); yPos = 20; }
+          const line = `#${p.number} ${p.name} - ${p.position}${p.note ? ` (${p.note})` : ''}`;
+          pdf.text(line, 10, yPos); yPos += 6;
+        });
+        pdf.save(`${teamName.replace(/\s+/g,'_')}_lineup.pdf`);
+      };
+
+      return (
+        <div className="max-w-7xl mx-auto">
+          {/* Header / Toolbar */}
+          <div className="bg-white rounded-lg shadow-2xl p-6 mb-6">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-4">
+              <div className="flex items-center gap-3">
+                <IUsers className="w-8 h-8 text-green-600" />
+                <input
+                  type="text"
+                  value={teamName}
+                  onChange={(e)=>setTeamName(e.target.value)}
+                  className="text-3xl font-bold text-gray-800 border-b-2 border-transparent hover:border-green-500 focus:border-green-600 outline-none"
+                  aria-label="Team name"
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <div className="relative group">
+                  <button className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 text-sm font-semibold">
+                    <IDownload className="w-4 h-4"/> Export Lineup
+                  </button>
+                  <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-xl border border-gray-200 py-1 hidden group-hover:block z-10 min-w-[180px]">
+                    <button onClick={downloadLineupJSON}
+                            className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2 text-sm">
+                      <IFile className="w-4 h-4 text-purple-500" /> Save as JSON
+                    </button>
+                    <button onClick={()=>lineupInputRef.current?.click()}
+                            className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2 text-sm">
+                      <IUpload className="w-4 h-4 text-indigo-500" /> Load JSON
+                    </button>
+                    <div className="border-t border-gray-200 my-1"></div>
+                    <button onClick={downloadLineupPNG}
+                            className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2 text-sm">
+                      <IImage className="w-4 h-4 text-orange-500" /> Download PNG
+                    </button>
+                    <button onClick={downloadLineupPDF}
+                            className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2 text-sm">
+                      <IPdf className="w-4 h-4 text-red-500" /> Download PDF
+                    </button>
+                  </div>
+                </div>
+                <button onClick={resetLineup}
+                        className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center gap-2 text-sm">
+                  <IRefresh className="w-3 h-3" /> Reset
+                </button>
+              </div>
+            </div>
+
+            <input ref={fileInputRef} type="file" accept=".json" onChange={uploadPlayerDatabase} className="hidden" />
+            <input ref={lineupInputRef} type="file" accept=".json" onChange={uploadLineup} className="hidden" />
+
+            <div className="mb-4">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Quick Formation Setup:</label>
+              <div className="flex flex-wrap gap-2">
+                {Object.keys(DEFAULT_FORMATIONS).map(formation => (
+                  <button key={formation} onClick={()=>applyFormation(formation)}
+                          className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+                            selectedFormation === formation ? 'bg-green-600 text-white':'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                          }`}>{formation}</button>
+                ))}
+              </div>
+            </div>
+            <p className="text-sm text-gray-600">Choose a formation, then click on field positions to assign players. Drag positions to move them around.</p>
+          </div>
+
+          {/* Main grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            {/* Field */}
+            <div className="lg:col-span-3">
+              <div ref={fieldRef}
+                   className="bg-green-700 rounded-lg shadow-2xl p-6 relative"
+                   style={{ aspectRatio: '2/3', minHeight: '600px' }}
+                   onDragOver={(e)=>e.preventDefault()}
+                   onDrop={handleFieldDrop}>
+                {/* Field lines */}
+                <div className="absolute inset-0 m-6 border-4 border-white rounded-lg overflow-hidden"></div>
+                <div className="absolute inset-x-0 top-0 h-1/2 border-b-4 border-white"></div>
+                <div className="absolute top-1/2 left-1/2 w-32 h-32 border-4 border-white rounded-full -translate-x-1/2 -translate-y-1/2"></div>
+                <div className="absolute top-1/2 left-1/2 w-2 h-2 bg-white rounded-full -translate-x-1/2 -translate-y-1/2"></div>
+                <div className="absolute top-0 left-1/2 w-48 h-20 border-4 border-t-0 border-white -translate-x-1/2"></div>
+                <div className="absolute bottom-0 left-1/2 w-48 h-20 border-4 border-b-0 border-white -translate-x-1/2"></div>
+                <div className="absolute top-0 left-1/2 w-20 h-8 border-4 border-t-0 border-white -translate-x-1/2"></div>
+                <div className="absolute bottom-0 left-1/2 w-20 h-8 border-4 border-b-0 border-white -translate-x-1/2"></div>
+
+                {lineup.map((slot, idx) => (
+                  <div key={idx}
+                       draggable={!!slot.player}
+                       onDragStart={(e)=>slot.player && handleLineupDragStart(slot, e)}
+                       style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
+                       className={`absolute -translate-x-1/2 -translate-y-1/2 group ${slot.player ? 'cursor-move':''}`}>
+                    {slot.player ? (
+                      <div className="relative">
+                        <div className="w-16 h-16 bg-blue-600 rounded-full border-4 border-white shadow-lg flex flex-col items-center justify-center text-white font-bold hover:scale-110 transition-transform">
+                          <div className="text-xl">{slot.player.number}</div>
+                          <div className="text-xs truncate w-14 text-center">{slot.player.name.split(' ')[0]}</div>
+                        </div>
+                        <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 text-xs bg-black bg-opacity-70 text-white px-2 py-1 rounded whitespace-nowrap">
+                          {slot.assignedPosition}
+                        </div>
+                        {slot.note && (
+                          <div className="absolute top-full mt-10 left-1/2 -translate-x-1/2 text-xs bg-yellow-400 text-black px-2 py-1 rounded max-w-32 text-center">
+                            {slot.note}
+                          </div>
+                        )}
+                        <div className="absolute top-full mt-1 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={()=>setEditingLineupSlot(slot)}
+                                  className="bg-white text-blue-600 px-2 py-1 rounded text-xs font-semibold shadow-lg hover:bg-blue-50">Change</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div onClick={()=>setEditingLineupSlot(slot)}
+                           className="w-16 h-16 bg-white bg-opacity-30 rounded-full border-4 border-white border-dashed flex flex-col items-center justify-center hover:bg-opacity-50 transition-all cursor-pointer">
+                        <IPlus className="w-6 h-6 text-white mb-1" />
+                        <span className="text-white text-xs font-bold">{slot.assignedPosition}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Sidebar */}
+            <div className="lg:col-span-1">
+              <div className="bg-white rounded-lg shadow-2xl p-6">
+                <div className="mb-4">
+                  <h3 className="text-xl font-bold text-gray-800 mb-3">Player Database</h3>
+                  <div className="flex gap-2">
+                    <button onClick={downloadPlayerDatabase}
+                            className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 text-sm font-semibold">
+                      <IDownload className="w-4 h-4"/> Export
+                    </button>
+                    <button onClick={()=>fileInputRef.current?.click()}
+                            className="flex-1 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center justify-center gap-2 text-sm font-semibold">
+                      <IUpload className="w-4 h-4"/> Import
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <div className="flex gap-2">
+                    <input type="text" value={newPlayerName}
+                      onChange={(e)=>setNewPlayerName(e.target.value)}
+                      onKeyDown={(e)=>e.key==='Enter' && addPlayer()}
+                      placeholder="Player name"
+                      className="flex-1 px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-green-500 outline-none" />
+                    <button onClick={addPlayer}
+                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2">
+                      <IPlus className="w-4 h-4"/>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {players.map(player => (
+                    <div key={player.id} className="bg-gray-100 rounded-lg p-3 group">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">
+                            {player.number}
+                          </div>
+                          <div>
+                            <div className="font-medium text-gray-800">{player.name}</div>
+                            {assignedPlayerIds.has(player.id) && (
+                              <div className="text-xs text-green-600 font-semibold">On Field</div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex gap-1">
+                          <button onClick={()=>setEditingPlayerDetails(player)} className="p-1 hover:bg-gray-200 rounded" title="Edit">
+                            <IFile className="w-4 h-4 text-blue-500"/>
+                          </button>
+                          <button onClick={()=>deletePlayer(player.id)} className="p-1 hover:bg-gray-200 rounded" title="Delete">
+                            <ITrash className="w-4 h-4 text-red-500"/>
+                          </button>
+                        </div>
+                      </div>
+
+                      {player.details && (
+                        <div className="mb-2 text-xs text-gray-600 bg-yellow-50 p-2 rounded border border-yellow-200">
+                          {player.details}
+                        </div>
+                      )}
+
+                      <div className="text-xs">
+                        <div className="font-semibold text-gray-600 mb-1">Positions:</div>
+                        <div className="flex flex-wrap gap-1">
+                          {player.positions.slice().sort().map(pos => (
+                            <button key={pos} onClick={()=>togglePosition(player.id, pos)}
+                              className={`px-2 py-1 rounded text-xs font-medium text-white ${POSITION_COLORS[pos]}`}>
+                              {pos}
+                            </button>
+                          ))}
+                          {ALL_POSITIONS.filter(pos => !player.positions.includes(pos)).map(pos => (
+                            <button key={pos} onClick={()=>togglePosition(player.id, pos)}
+                              className="px-2 py-1 rounded text-xs font-medium bg-gray-200 text-gray-600 hover:bg-gray-300">
+                              {pos}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <div className="text-sm text-gray-600">
+                    <div>On Field: {lineup.filter(s=>s.player).length} / 11</div>
+                    <div>Available: {availablePlayers.length}</div>
+                    <div>Total Players: {players.length}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Assign/Edit modal */}
+          {editingLineupSlot && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-lg shadow-2xl p-6 max-w-md w-full max-h-[80vh] overflow-y-auto">
+                <h3 className="text-xl font-bold text-gray-800 mb-4">
+                  {editingLineupSlot.player ? `Edit Position ${editingLineupSlot.slotIndex + 1}`
+                  : `Assign Player to ${editingLineupSlot.assignedPosition}`}
+                </h3>
+
+                {editingLineupSlot.player && (
+                  <>
+                    <div className="mb-4 p-3 bg-gray-100 rounded-lg">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-lg">
+                          {editingLineupSlot.player.number}
+                        </div>
+                        <div className="font-semibold text-lg">{editingLineupSlot.player.name}</div>
+                      </div>
+
+                      <div className="mb-3">
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Assigned Position:</label>
+                        <div className="flex flex-wrap gap-2">
+                          {editingLineupSlot.player.positions.map(pos => (
+                            <button key={pos} onClick={()=>updateSlotPosition(editingLineupSlot, pos)}
+                              className={`px-3 py-2 rounded font-medium text-white ${
+                                editingLineupSlot.assignedPosition === pos
+                                ? POSITION_COLORS[pos] + ' ring-4 ring-offset-2 ring-gray-400'
+                                : POSITION_COLORS[pos] + ' opacity-70 hover:opacity-100'
+                              }`}>{pos}</button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mb-3">
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Lineup Note:</label>
+                      <textarea value={editingLineupSlot.note || ''}
+                        onChange={(e)=>updateSlotNote(editingLineupSlot, e.target.value)}
+                        placeholder="E.g., Captain, Takes penalties"
+                        className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 outline-none" rows="2" />
+                    </div>
+
+                    <button onClick={()=>{ removePlayerFromSlot(editingLineupSlot); setEditingLineupSlot(null); }}
+                      className="w-full px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">Remove from Lineup</button>
+
+                    <div className="border-t pt-4 mt-4">
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Or select different player:</label>
+                    </div>
+                  </>
+                )}
+
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {players.map(player => (
+                    <button key={player.id}
+                      onClick={()=>{ assignPlayerToSlot(editingLineupSlot, player); setEditingLineupSlot(null); }}
+                      disabled={assignedPlayerIds.has(player.id) && editingLineupSlot.player?.id !== player.id}
+                      className={`w-full flex items-center gap-3 p-3 rounded-lg ${
+                        assignedPlayerIds.has(player.id) && editingLineupSlot.player?.id !== player.id
+                        ? 'bg-gray-100 opacity-50 cursor-not-allowed' : 'bg-gray-100 hover:bg-blue-100'
+                      }`}>
+                      <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">
+                        {player.number}
+                      </div>
+                      <div className="flex-1 text-left">
+                        <div className="font-medium">{player.name}</div>
+                        <div className="text-xs text-gray-600">{player.positions.join(', ')}</div>
+                      </div>
+                      {assignedPlayerIds.has(player.id) && editingLineupSlot.player?.id !== player.id && (
+                        <span className="text-xs text-green-600 font-semibold">On Field</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex justify-end gap-2 mt-4">
+                  <button onClick={()=>setEditingLineupSlot(null)}
+                          className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">Close</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Edit player modal */}
+          {editingPlayerDetails && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-lg shadow-2xl p-6 max-w-md w-full">
+                <h3 className="text-xl font-bold text-gray-800 mb-4">Edit Player: {editingPlayerDetails.name}</h3>
+
+                <div className="mb-4">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Player Name:</label>
+                  <input type="text" value={editingPlayerDetails.name}
+                         onChange={(e)=>updatePlayerInfo(editingPlayerDetails.id, 'name', e.target.value)}
+                         className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 outline-none" />
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Jersey Number:</label>
+                  <input type="number" value={editingPlayerDetails.number}
+                         onChange={(e)=>updatePlayerInfo(editingPlayerDetails.id, 'number', parseInt(e.target.value) || 0)}
+                         className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 outline-none" />
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Notes / Details:</label>
+                  <textarea value={editingPlayerDetails.details || ''}
+                            onChange={(e)=>updatePlayerInfo(editingPlayerDetails.id, 'details', e.target.value)}
+                            placeholder="E.g., Injured left ankle, Prefers right foot, Strong in air, Good stamina..."
+                            rows="6"
+                            className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 outline-none" />
+                  <p className="text-xs text-gray-500 mt-2">Keep notes about player strengths, weaknesses, injuries, or special considerations.</p>
+                </div>
+
+                <div className="flex justify-end gap-2">
+                  <button onClick={()=>setEditingPlayerDetails(null)}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Done</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.render(<App/>, document.getElementById('root'));
+  </script>
+</body>
+</html>
