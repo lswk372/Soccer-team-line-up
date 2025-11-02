@@ -17,7 +17,7 @@
   <div id="root"></div>
 
   <script type="text/babel" data-presets="react">
-    const { useState, useRef, useEffect } = React;
+    const { useState, useRef, useEffect, useMemo } = React;
 
     const Icon = ({ path, className }) => (
       <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none"
@@ -35,6 +35,8 @@
     const IImage=(p)=><Icon {...p} path={<><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></>} />;
     const IPdf=(p)=><Icon {...p} path={<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/></>} />;
     const IClose=(p)=><Icon {...p} path={<><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>} />;
+    const IFilter=(p)=><Icon {...p} path={<><polygon points="22 3 2 3 10 12 10 19 14 21 14 12 22 3"/></>} />;
+    const IZoom=(p)=><Icon {...p} path={<><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></>} />;
 
     const POSITION_CATEGORIES = {
       GK: ['GK'],
@@ -130,7 +132,12 @@
       const [editingPlayerDetails, setEditingPlayerDetails] = useState(null);
       const [draggedSlot, setDraggedSlot] = useState(null);
 
-      const lineupInitial = React.useMemo(() => DEFAULT_FORMATIONS['4-4-2'].map((pos, idx) => ({
+      // Database UX: zoom + filters
+      const [dbZoom, setDbZoom] = useState(100); // percent
+      const [filterOpen, setFilterOpen] = useState(false);
+      const [selectedPositionsFilter, setSelectedPositionsFilter] = useState([]); // multi-select OR
+
+      const lineupInitial = useMemo(() => DEFAULT_FORMATIONS['4-4-2'].map((pos, idx) => ({
         slotIndex: idx, player: players[idx] || null, x: pos.x, y: pos.y, assignedPosition: pos.position, note: ''
       })), []);
       const [lineup, setLineup] = useState(lineupInitial);
@@ -139,7 +146,7 @@
       const lineupInputRef = useRef(null);
       const fieldRef = useRef(null);
 
-      const fieldBg = React.useMemo(()=>{
+      const fieldBg = useMemo(()=>{
         // Base colors
         const c1 = '#15803d'; // primary green
         const c2 = '#136f35'; // darker stripe
@@ -162,12 +169,12 @@
         return { backgroundColor: c1 };
       }, [fieldStyle]);
 
-
       useEffect(()=>{
         const handler = (e)=>{
           if (e.key === 'Escape'){
             setEditingLineupSlot(null);
             setEditingPlayerDetails(null);
+            setFilterOpen(false);
           }
         };
         window.addEventListener('keydown', handler);
@@ -176,6 +183,8 @@
 
       const assignedPlayerIds = new Set(lineup.filter(s => s.player).map(s => s.player.id));
       const availablePlayers = players.filter(p => !assignedPlayerIds.has(p.id));
+
+      const numberTaken = (num, excludeId=null) => players.some(p => p.number === num && p.id !== excludeId);
 
       const handleLineupDragStart = (slot, e) => {
         setDraggedSlot(slot);
@@ -219,7 +228,10 @@
       const addPlayer = () => {
         if (!newPlayerName.trim()) return;
         const newId = Math.max(0, ...players.map(p => p.id)) + 1;
-        const newNumber = Math.max(0, ...players.map(p => p.number)) + 1;
+        // pick next available number (avoid duplicates)
+        let newNumber = 1;
+        const taken = new Set(players.map(p=>p.number));
+        while (taken.has(newNumber)) newNumber++;
         setPlayers([...players, { id: newId, name: newPlayerName.trim(), number: newNumber, positions: [], details: '' }]);
         setNewPlayerName('');
       };
@@ -279,6 +291,7 @@
       };
 
       const updatePlayerInfo = (playerId, field, value) => {
+        // Generic update (name, details). Number is handled specially in the modal to prevent duplicates + typing issues.
         setPlayers(players.map(p => p.id === playerId ? { ...p, [field]: value } : p));
         setLineup(lineup.map(slot => slot.player?.id === playerId ? { ...slot, player: { ...slot.player, [field]: value } } : slot));
         if (editingPlayerDetails?.id === playerId) {
@@ -381,13 +394,13 @@
         pdf.save(`${teamName.replace(/\s+/g,'_')}_lineup.pdf`);
       };
 
-      const Modal = ({ onClose, children }) => (
+      const Modal = ({ onClose, children, maxW="max-w-md" }) => (
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black bg-opacity-50" onClick={onClose} />
           <div className="absolute inset-0 flex items-center justify-center p-4 pointer-events-none">
-            <div className="bg-white rounded-lg shadow-2xl p-6 max-w-md w-full max-h-[80vh] overflow-y-auto pointer-events-auto relative">
+            <div className={`bg-white rounded-lg shadow-2xl p-6 w-full ${maxW} max-h-[85vh] overflow-y-auto pointer-events-auto relative`}>
               <button aria-label="Close" className="absolute right-2 top-2 p-2 rounded hover:bg-gray-100" onClick={onClose}>
-                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
               {children}
             </div>
@@ -395,7 +408,22 @@
         </div>
       );
 
-      const closeAnyModal = () => { setEditingLineupSlot(null); setEditingPlayerDetails(null); };
+      const closeAnyModal = () => { setEditingLineupSlot(null); setEditingPlayerDetails(null); setFilterOpen(false); };
+
+      // Derived lists for DB: sort by jersey number and position filter (OR logic)
+      const sortedPlayers = useMemo(() => players.slice().sort((a,b)=> (a.number ?? 0) - (b.number ?? 0)), [players]);
+      const filteredPlayers = useMemo(() => {
+        if (!selectedPositionsFilter.length) return sortedPlayers;
+        const setSel = new Set(selectedPositionsFilter);
+        return sortedPlayers.filter(p => p.positions.some(pos => setSel.has(pos)));
+      }, [sortedPlayers, selectedPositionsFilter]);
+
+      // Position Filter UI helpers
+      const allPositionsSorted = useMemo(()=>ALL_POSITIONS.slice().sort(sortBySoccerRole), []);
+      const toggleFilterPosition = (pos) => {
+        setSelectedPositionsFilter(prev => prev.includes(pos) ? prev.filter(p=>p!==pos) : [...prev, pos]);
+      };
+      const clearFilters = () => setSelectedPositionsFilter([]);
 
       return (
         <div className="max-w-7xl mx-auto">
@@ -526,18 +554,59 @@
 
             <div className="lg:col-span-1">
               <div className="bg-white rounded-lg shadow-2xl p-6" onClick={()=>closeAnyModal()}>
-                <div className="mb-4">
-                  <h3 className="text-xl font-bold text-gray-800 mb-3">Player Database</h3>
-                  <div className="flex gap-2">
-                    <button onClick={downloadPlayerDatabase}
-                            className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 text-sm font-semibold">
-                      <IDownload className="w-4 h-4"/> Export
-                    </button>
-                    <button onClick={()=>fileInputRef.current?.click()}
-                            className="flex-1 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center justify-center gap-2 text-sm font-semibold">
-                      <IUpload className="w-4 h-4"/> Import
-                    </button>
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-xl font-bold text-gray-800">Player Database</h3>
+                  <div className="flex items-center gap-2">
+                    <IZoom className="w-4 h-4 text-gray-600" />
+                    <input type="range" min="90" max="160" value={dbZoom} onChange={(e)=>setDbZoom(parseInt(e.target.value))} />
+                    <span className="text-xs text-gray-500 w-10 text-right">{dbZoom}%</span>
                   </div>
+                </div>
+
+                <div className="mb-2 flex gap-2">
+                  <button onClick={downloadPlayerDatabase}
+                          className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 text-sm font-semibold">
+                    <IDownload className="w-4 h-4"/> Export
+                  </button>
+                  <button onClick={()=>fileInputRef.current?.click()}
+                          className="flex-1 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center justify-center gap-2 text-sm font-semibold">
+                    <IUpload className="w-4 h-4"/> Import
+                  </button>
+                </div>
+
+                <div className="mb-3 flex gap-2">
+                  <div className="relative">
+                    <button onClick={(e)=>{ e.stopPropagation(); setFilterOpen((v)=>!v); }} className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center gap-2 text-sm font-semibold">
+                      <IFilter className="w-4 h-4"/> Positions
+                      {!!selectedPositionsFilter.length && (
+                        <span className="ml-1 text-xs text-gray-600">({selectedPositionsFilter.length})</span>
+                      )}
+                    </button>
+                    {filterOpen && (
+                      <div className="absolute z-20 mt-1 bg-white border rounded-lg shadow-xl p-3 w-64 max-h-72 overflow-y-auto" onClick={(e)=>e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-2">
+                          <div className="text-sm font-semibold text-gray-700">Filter by position (OR)</div>
+                          <button className="text-xs text-blue-600 hover:underline" onClick={clearFilters}>Clear</button>
+                        </div>
+                        {['GK','Defence','Midfielder','Attacker'].map(cat => (
+                          <div key={cat} className="mb-2">
+                            <div className="text-xs font-bold text-gray-500 mb-1">{cat}</div>
+                            <div className="flex flex-wrap gap-1">
+                              {POSITION_CATEGORIES[cat].map(pos => (
+                                <label key={pos} className={`px-2 py-1 rounded text-xs border cursor-pointer select-none ${selectedPositionsFilter.includes(pos) ? 'bg-green-600 text-white border-green-700' : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'}`}
+                                onClick={()=>toggleFilterPosition(pos)}>
+                                  <input type="checkbox" readOnly checked={selectedPositionsFilter.includes(pos)} className="mr-1 align-middle"/>
+                                  {pos}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex-1"></div>
                 </div>
 
                 <div className="mb-4">
@@ -554,8 +623,8 @@
                   </div>
                 </div>
 
-                <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {players.map(player => (
+                <div className="space-y-2 max-h-96 overflow-y-auto" style={{ fontSize: dbZoom + '%' }}>
+                  {filteredPlayers.map(player => (
                     <div key={player.id} className="bg-gray-100 rounded-lg p-3 group">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-3">
@@ -604,6 +673,9 @@
                       </div>
                     </div>
                   ))}
+                  {!filteredPlayers.length && (
+                    <div className="text-sm text-gray-500">No players match current filters.</div>
+                  )}
                 </div>
 
                 <div className="mt-4 pt-4 border-t border-gray-200">
@@ -697,9 +769,10 @@
           )}
 
           {editingPlayerDetails && (
-            <Modal onClose={()=>setEditingPlayerDetails(null)}>
+            <Modal onClose={()=>setEditingPlayerDetails(null)} maxW="max-w-lg">
               <h3 className="text-xl font-bold text-gray-800 mb-4">Edit Player: {editingPlayerDetails.name}</h3>
 
+              {/* Name */}
               <div className="mb-4">
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Player Name:</label>
                 <input type="text" value={editingPlayerDetails.name}
@@ -707,13 +780,15 @@
                        className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 outline-none" />
               </div>
 
-              <div className="mb-4">
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Jersey Number:</label>
-                <input type="number" value={editingPlayerDetails.number}
-                       onChange={(e)=>updatePlayerInfo(editingPlayerDetails.id, 'number', parseInt(e.target.value) || 0)}
-                       className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 outline-none" />
-              </div>
+              {/* Jersey number with duplicate guard + better typing UX */}
+              <JerseyNumberEditor
+                key={editingPlayerDetails.id}
+                player={editingPlayerDetails}
+                isTaken={(n)=>numberTaken(n, editingPlayerDetails.id)}
+                onCommit={(n)=>updatePlayerInfo(editingPlayerDetails.id, 'number', n)}
+              />
 
+              {/* Notes */}
               <div className="mb-4">
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Notes / Details:</label>
                 <textarea value={editingPlayerDetails.details || ''}
@@ -730,6 +805,53 @@
               </div>
             </Modal>
           )}
+        </div>
+      );
+    }
+
+    // Component: jersey number editor (fixes 1-char issue & prevents duplicates)
+    function JerseyNumberEditor({ player, isTaken, onCommit }){
+      const [input, setInput] = useState(String(player.number ?? ''));
+      const [error, setError] = useState('');
+
+      useEffect(()=>{ setInput(String(player.number ?? '')); setError(''); }, [player.id]);
+
+      const onChange = (e) => {
+        const val = e.target.value;
+        if (/^\d*$/.test(val)) { // allow only digits while typing
+          setInput(val);
+          setError('');
+          if (val !== '' && isTaken(parseInt(val,10))) {
+            setError('This number is taken, please choose another number.');
+          }
+        }
+      };
+
+      const commit = () => {
+        if (input === '') { setError('Please enter a jersey number.'); return; }
+        const num = parseInt(input, 10);
+        if (isNaN(num)) { setError('Please enter a valid number.'); return; }
+        if (isTaken(num)) { setError('This number is taken, please choose another number.'); return; }
+        onCommit(num);
+      };
+
+      return (
+        <div className="mb-4">
+          <label className="block text-sm font-semibold text-gray-700 mb-2">Jersey Number:</label>
+          <div className="flex gap-2 items-center">
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={input}
+              onChange={onChange}
+              onBlur={commit}
+              placeholder="e.g., 12"
+              className={`w-32 px-3 py-2 border-2 rounded-lg focus:border-blue-500 outline-none ${error ? 'border-red-400' : 'border-gray-300'}`}
+            />
+            <span className="text-xs text-gray-500">Unique per team</span>
+          </div>
+          {error && <div className="mt-2 text-sm text-red-600 font-medium">{error}</div>}
         </div>
       );
     }
